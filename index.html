@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Toggl Time Tracker</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      body {
+        background: #f4f5f7;
+        margin: 0;
+        padding: 20px;
+        color: #333;
+      }
+      .card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        margin-bottom: 20px;
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+        color: #1a73e8;
+      }
+      input {
+        width: 100%;
+        padding: 12px;
+        margin: 8px 0 16px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 1rem;
+      }
+      button {
+        width: 100%;
+        padding: 14px;
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button.stop {
+        background: #d93025;
+      }
+      .hidden {
+        display: none;
+      }
+      .timer-display {
+        font-size: 2rem;
+        font-weight: bold;
+        text-align: center;
+        margin: 15px 0;
+        color: #202124;
+      }
+      .task-name {
+        font-weight: 600;
+        text-align: center;
+        font-size: 1.1rem;
+        color: #5f6368;
+      }
+      .settings-btn {
+        background: none;
+        color: #5f6368;
+        border: 1px solid #ccc;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- SETUP VIEW -->
+    <div id="setupView" class="card hidden">
+      <h2>Connect Supabase</h2>
+      <p style="font-size: 0.85rem; color: #666">
+        Enter your Supabase credentials:
+      </p>
+      <label>Project URL</label>
+      <input
+        type="text"
+        id="supabaseUrl"
+        placeholder="https://xyz.supabase.co"
+      />
+      <label>Anon Key</label>
+      <input type="text" id="supabaseKey" placeholder="eyJhbGciOi..." />
+      <button onclick="saveSettings()">Save Settings</button>
+    </div>
+
+    <!-- MAIN TIMER VIEW -->
+    <div id="timerView" class="card hidden">
+      <div id="idleState">
+        <h2>Start Tracking</h2>
+        <input
+          type="text"
+          id="taskInput"
+          placeholder="What are you working on?"
+        />
+        <button onclick="startTimer()">Start Timer</button>
+      </div>
+
+      <div id="runningState" class="hidden">
+        <h2>Active Timer</h2>
+        <div class="task-name" id="activeTaskName">Task Name</div>
+        <div class="timer-display" id="timerDisplay">00:00:00</div>
+        <button class="stop" onclick="stopTimer()">Stop & Save Entry</button>
+      </div>
+
+      <button class="settings-btn" onclick="showSetup()">⚙️ Settings</button>
+    </div>
+
+    <script>
+      let timerInterval = null;
+
+      window.onload = function () {
+        const url = localStorage.getItem("SUPABASE_URL");
+        const key = localStorage.getItem("SUPABASE_KEY");
+
+        if (!url || !key) {
+          showSetup();
+        } else {
+          showTimer();
+          checkActiveTimer();
+        }
+      };
+
+      function showSetup() {
+        document.getElementById("setupView").classList.remove("hidden");
+        document.getElementById("timerView").classList.add("hidden");
+        document.getElementById("supabaseUrl").value =
+          localStorage.getItem("SUPABASE_URL") || "";
+        document.getElementById("supabaseKey").value =
+          localStorage.getItem("SUPABASE_KEY") || "";
+      }
+
+      function showTimer() {
+        document.getElementById("setupView").classList.add("hidden");
+        document.getElementById("timerView").classList.remove("hidden");
+      }
+
+      function saveSettings() {
+        const url = document.getElementById("supabaseUrl").value.trim();
+        const key = document.getElementById("supabaseKey").value.trim();
+
+        if (!url || !key) return alert("Please fill in both fields!");
+
+        localStorage.setItem("SUPABASE_URL", url);
+        localStorage.setItem("SUPABASE_KEY", key);
+        showTimer();
+      }
+
+      function startTimer() {
+        const task = document.getElementById("taskInput").value.trim();
+        if (!task) return alert("Enter a task description!");
+
+        const timerData = {
+          description: task,
+          startTime: new Date().toISOString(),
+        };
+
+        localStorage.setItem("mobileActiveTimer", JSON.stringify(timerData));
+        document.getElementById("taskInput").value = "";
+        checkActiveTimer();
+      }
+
+      function checkActiveTimer() {
+        const activeTimer = localStorage.getItem("mobileActiveTimer");
+
+        if (activeTimer) {
+          const data = JSON.parse(activeTimer);
+          document.getElementById("activeTaskName").innerText =
+            data.description;
+          document.getElementById("idleState").classList.add("hidden");
+          document.getElementById("runningState").classList.remove("hidden");
+
+          clearInterval(timerInterval);
+          timerInterval = setInterval(() => {
+            const elapsedSecs = Math.floor(
+              (new Date() - new Date(data.startTime)) / 1000,
+            );
+            document.getElementById("timerDisplay").innerText = new Date(
+              elapsedSecs * 1000,
+            )
+              .toISOString()
+              .substr(11, 8);
+          }, 1000);
+        } else {
+          document.getElementById("idleState").classList.remove("hidden");
+          document.getElementById("runningState").classList.add("hidden");
+          clearInterval(timerInterval);
+        }
+      }
+
+      async function stopTimer() {
+        const activeTimer = JSON.parse(
+          localStorage.getItem("mobileActiveTimer"),
+        );
+        if (!activeTimer) return;
+
+        const url = localStorage.getItem("SUPABASE_URL");
+        const key = localStorage.getItem("SUPABASE_KEY");
+
+        const startTime = new Date(activeTimer.startTime);
+        const endTime = new Date();
+        const durationSeconds = Math.round((endTime - startTime) / 1000);
+
+        const payload = {
+          description: activeTimer.description,
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          duration_seconds: durationSeconds,
+          entry_device: "Mobile",
+        };
+
+        try {
+          const res = await fetch(url + "/rest/v1/time_entries", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: key,
+              Authorization: "Bearer " + key,
+              Prefer: "return=minimal",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (res.ok) {
+            alert("Entry saved to Supabase!");
+            localStorage.removeItem("mobileActiveTimer");
+            checkActiveTimer();
+          } else {
+            alert("Error saving entry. Check API settings.");
+          }
+        } catch (err) {
+          alert("Network error: " + err.message);
+        }
+      }
+    </script>
+  </body>
+</html>
